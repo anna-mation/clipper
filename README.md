@@ -38,3 +38,6 @@ To stop `a.exe`, find the process in Task Manager and terminate.
 | reset    | Resets paste rules to default for client (set id as ‘all’ for all clients) | `reset <id>` |
 | edit   | Edits existing paste rule | `edit <id> <rule id> <regex \| output \| toggle> <value>` |
 | regex   | Adds new regex rule to client (set id as ‘all’ for all clients) | `regex <id> <regex> <output>` |
+
+# Logs
+The client logs are located in `cliplog.txt` in the same directory as `c2.py`, created after the server terminates.
