@@ -280,7 +280,7 @@ def cmd_rules(cid):
 def cmd_regex(cid, regex, output):
     if cid == 'all':
         for client in ids:
-            cmd_regex(client)
+            cmd_regex(client, regex, output)
         return
     if cid not in ids:
         print(f"[terminal] [regex] id {cid} does not exist")
