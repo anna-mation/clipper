@@ -48,16 +48,23 @@ def handle_client(conn, cid, running):
 def handle_msg(conn, cid):
     ret = False
     data = conn.recv(buffer_size).decode('utf-8', errors='ignore')
-            
+
+    tags = ['update', 'init', 'rule', 'exit']
+    pattern = r'(?=\[(' + '|'.join(tags) + r')\])'
+
     if data:
-        if data.startswith('[exit]'):
-            ret = True
-            user_exit(ids[cid])
-            print(f'[{cid}] {data}')
-        elif data.startswith('[init] '):
-            update_rules(cid, data[7:])
-        else:
-            handle_update(cid, data)
+        # Split data only at the specified tags
+        parts = re.split(pattern, data)
+        del parts[:2]
+        for part in parts:
+            if part.startswith('[exit]'):
+                ret = True
+                user_exit(ids[cid])
+                print(f'[{cid}] {part}')
+            elif part.startswith('[init] '):
+                update_rules(cid, part[7:])
+            else:
+                handle_update(cid, part)
     return ret
 
 # handles incoming clipboard update notifications 
@@ -200,6 +207,7 @@ view: view clipboard history of given client ('all' for entire history)
 nick: change id of client to given nickname
 addr: view address and corresponding id of client
 mute/unmute: mutes/unmutes incoming copy notifications
+rm: terminates given client
 
 rules: views paste rules for client
 reset: resets paste rules to default for client
@@ -336,7 +344,12 @@ def cmd_edit(cid, rid, keyword, value):
         else:
             rule[1] = value
         print(f'[terminal] [edit] regex "{rid}" edited')
-    
+
+def cmd_rm(cid):
+    if cid not in ids:
+        print(f"[terminal] [rm] id {cid} does not exist")
+        return
+    send_msg(conns[ids[cid]], f'[exit]')
 
 # Create a socket object
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -405,6 +418,9 @@ try:
         elif cmd == 'edit':
             if not arg_err(args, 5, 'edit <id> <rule id> <regex | output | toggle> <value>'):
                 cmd_edit(full_cmd[1], full_cmd[2], full_cmd[3], full_cmd[4])
+        elif cmd == 'rm':
+            if not arg_err(args, 2, 'rm <id>'):
+                cmd_rm(full_cmd[1])
         else:
             print((f'[terminal] command {cmd} not found'))
         

