@@ -22,7 +22,7 @@ g++ clipboard.cpp -lws2_32 -mwindows
 ./a.exe
 ```
 
-To stop `a.exe`, find the process in Task Manager and terminate.
+To stop `a.exe`, either run the `rm <id>` command to kill the client, or `exit`/CTRL-C to kill the server.
 
 # Server Commands
 
@@ -34,6 +34,7 @@ To stop `a.exe`, find the process in Task Manager and terminate.
 | nick   | Change id of client to given nickname | `nick <old id> <new id>` |
 | addr   | View address and corresponding id of client (set id as ‘all’ for all clients)  | `addr <id>` |
 | mute/unmute   | Mutes/unmutes incoming copy notifications | `<mute \| unmute>` |
+| rm   | Terminates given client | `rm <id>` |
 | rules   | Views paste rules for client (set id as ‘all’ for all clients) | `rules <id>` |
 | reset    | Resets paste rules to default for client (set id as ‘all’ for all clients) | `reset <id>` |
 | edit   | Edits existing paste rule | `edit <id> <rule id> <regex \| output \| toggle> <value>` |
